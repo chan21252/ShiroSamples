@@ -403,5 +403,75 @@ web相关。//to-do
 
 ## 身份验证
 
+### 验证Subject
 
+步骤：
 
+1. 创建令牌，令牌一般由Subject标识（principal）和凭据（credentials）组成
+2. 提交令牌，进行身份验证
+3. 如果验证成功，允许访问，否则拒绝。
+
+### Remembered 和 Authenticated的区别
+
+Remembered ：subject.isRemembered()返回true，说明Suject有一个由之前会话记住的身份。
+
+Authenticated：subject.isAuthenticated()返回true，说明Subject已经被当前会话成功验证了身份。
+
+Authenticated可以强有力地证明Subject身份的，Remembered并不能。建议常规操作Remembered即可，而敏感操作需要Authenticated重新验证身份。
+
+### 登出
+
+subject.logout()进行登出操作。登出会销毁一切身份标识，Subject会变成匿名的。
+
+### 原理
+
+![](http://shiro.apache.org/assets/images/ShiroAuthenticationSequence.png)
+
+1. 应用调用Subject.login(token)开始验证
+2. Subject委托验证工作给SecurityManager，通过调用SecurityManager.login(token)
+3. SecurityManager收到token后，委托给内部的Authenticator验证器
+4. 验证器协调Realm，利用AuthenticationStrategy（验证策略）进行身份验证。验证策略会对Realm验证结果作出决策。
+5. Realm验证提交的token。
+
+**Authenticator**
+
+Shiro默认的Authenticator是`ModularRealmAuthenticator`
+
+自定义Authenticator：
+
+```ini
+[main]
+authenticator = com.foo.bar.CustomAuthenticator
+securityManager.authenticator = $authenticator
+```
+
+**AuthenticationStrategy**
+
+验证器策略决策多个Realm的最终验证结果，也负责聚合每个验证成功Realm的结果，并将它们绑定到AuthenticationInfo。Authenticator实例会返回AuthenticationInfo，Shiro使用它来表示Subject的最终身份。
+
+验证策略会有4处进行决策
+
+1. 所有Realm调用之前
+2. 每个Realm的getAuthenticationInfo方法之前
+3. 每个Realm的getAuthenticationInfo方法之后
+4. 所有Realm调用之后
+
+Shiro有3个AuthenticationStrategy实现：
+
+| 策略                         | 说明                                                         |
+| ---------------------------- | ------------------------------------------------------------ |
+| AtLeastOneSuccessfulStrategy | 只要有一个Realm验证成功，则成功。没有成功的，则失败。ModularRealmAuthenticator的默认策略。 |
+| FirstSuccessfulStrategy      | 只使用第一个成功的Realm验证信息，后面都将忽略。如果没有成功的，则失败。 |
+| AllSuccessfulStrategy        | 所有的Realm都必须验证成功，才成功。                          |
+
+指定验证器策略
+
+```ini
+[main]
+authcStrategy = org.apache.shiro.authc.pam.FirstSuccessfulStrategy
+securityManager.authenticator.authenticationStrategy = $authcStrategy
+```
+
+自定义策略：实现`org.apache.shiro.authc.pam.AbstractAuthenticationStrategy`类。
+
+**Realm验证顺序**
