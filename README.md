@@ -1,3 +1,5 @@
+原文地址：http://shiro.apache.org/reference.html
+
 # 介绍
 
 ## 什么是Apache Shiro？
@@ -475,3 +477,52 @@ securityManager.authenticator.authenticationStrategy = $authcStrategy
 自定义策略：实现`org.apache.shiro.authc.pam.AbstractAuthenticationStrategy`类。
 
 **Realm验证顺序**
+
+```ini
+blahRealm = com.company.blah.Realm
+fooRealm = com.company.foo.Realm
+barRealm = com.company.another.Realm
+securityManager.realms = $blahRealm, $fooRealm, $barRealm
+```
+
+1. 设置了securityManager.realms属性
+   1. 按照属性顺序验证（迭代顺序）
+   2. 不会验证没有注入的Realm
+2. 没有设置securityManager.realms
+   1. 加载所有定义的Realm（隐式设置）
+   2. 按照配置文件Realm定义的顺序验证
+
+
+
+## 授权
+
+### 授权的三要素
+
+**权限**
+
+安全策略的原子要素，描述了谁是否可以对资源进行某种操作。
+
+**角色**
+
+一组权限的集合。
+
+**用户**
+
+应用程序的使用者，Shiro中的用户是Subject。角色拥有某些权限，将角色分配给用户，用户就具有了执行某些操作的权限。
+
+常见关联关系：用户1-n角色1-n权限
+
+### Subject授权
+
+三种方式：
+
+1. 编码方式
+2. 注解方式
+3. JSP TagLibs 控制web输出
+
+
+
+
+
+
+
