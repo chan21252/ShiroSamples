@@ -542,5 +542,223 @@ securityManager.realms = $blahRealm, $fooRealm, $barRealm
 
 总结：先用公盐加密，再用私盐加密。私盐需要一起存储
 
+## 缓存
+
+Subject授权时，第一次检查时Realm读取Subject的权限并返回，开启缓存后续检查权限无需重新读取返回，直接读取缓存内容。
+
+### ehcache
+
+
+
+# 整合Spring
+
+## 导入依赖
+
+1. Spring
+   1. core
+   2. beans
+   3. context
+   4. jdbc
+   5. tx
+   6. aop->aspectj
+2. SpringMVC
+   1. web
+   2. webmvc
+3. 日志
+   1. sl4j-api
+   2. log4j2
+   3. log4j-sl4j-impl
+   4. jcl-over-sl4j：spring jcl统一到sl4j
+4. 序列化
+   1. jackson/gson/fastjson
+5. shiro
+   1. shiro-core
+   2. shiro-spring
+   3. shiro-ehcache -> ehcache
+6. javaweb
+   1. servlet-api
+   2. jstl
+
+## 配置Spring和SpringMVC
+
+创建Spring容器
+
+web.xml
+
+```xml
+<context-param>
+    <param-name>contextConfigLocation</param-name>
+    <param-value>classpath:applicationContext.xml</param-value>
+</context-param>
+
+<listener>
+    <listener-class>org.springframework.web.context.ContextLoaderListener</listener-class>
+</listener>
+```
+
+配置SpringMVC
+
+web.xml
+
+``` xml
+<servlet>
+    <servlet-name>spring</servlet-name>
+    <servlet-class>org.springframework.web.servlet.DispatcherServlet</servlet-class>
+    <init-param>
+        <param-name>contextConfigLocation</param-name>
+        <param-value>classpath:spring-mvc.xml</param-value>
+    </init-param>
+</servlet>
+<servlet-mapping>
+    <servlet-name>spring</servlet-name>
+    <url-pattern>/</url-pattern>
+</servlet-mapping>
+```
+
+spring-mvc.xml
+
+``` xml
+<?xml version="1.0" encoding="UTF-8"?>
+<beans xmlns="http://www.springframework.org/schema/beans"
+       xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+       xmlns:mvc="http://www.springframework.org/schema/mvc"
+       xmlns:context="http://www.springframework.org/schema/context"
+       xsi:schemaLocation="http://www.springframework.org/schema/beans http://www.springframework.org/schema/beans/spring-beans.xsd
+       http://www.springframework.org/schema/context https://www.springframework.org/schema/context/spring-context.xsd
+       http://www.springframework.org/schema/mvc https://www.springframework.org/schema/mvc/spring-mvc.xsd">
+
+    <context:component-scan base-package="com.chan.shiro"/>
+
+    <!-- 视图解析器 -->
+    <bean class="org.springframework.web.servlet.view.InternalResourceViewResolver">
+        <property name="prefix" value="/"/>
+        <property name="suffix" value=".jsp"/>
+    </bean>
+
+    <mvc:annotation-driven/>
+    <mvc:default-servlet-handler/>
+</beans>
+```
+
+## 配置shiro
+
+配置shiroFilter
+
+web.xml
+
+``` xml
+<!-- shiro filter -->
+<filter>
+    <filter-name>shiroFilter</filter-name>
+    <filter-class>org.springframework.web.filter.DelegatingFilterProxy</filter-class>
+    <init-param>
+        <param-name>targetFilterLifecycle</param-name>
+        <param-value>true</param-value>
+    </init-param>
+</filter>
+<filter-mapping>
+    <filter-name>shiroFilter</filter-name>
+    <url-pattern>/*</url-pattern>
+</filter-mapping>
+```
+
+SpringIOC中配置SecurityManager
+
+applicationContext.xml
+
+```  xml
+<?xml version="1.0" encoding="UTF-8"?>
+<beans xmlns="http://www.springframework.org/schema/beans"
+       xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+       xsi:schemaLocation="http://www.springframework.org/schema/beans http://www.springframework.org/schema/beans/spring-beans.xsd">
+
+    <!-- 配置shiro -->
+    <bean id="securityManager" class="org.apache.shiro.web.mgt.DefaultWebSecurityManager">
+        <property name="cacheManager" ref="cacheManager"/>
+        <property name="sessionMode" value="native" />
+        <property name="realm" ref="realm"/>
+    </bean>
+
+    <!-- cacheManager:ehcache -->
+    <bean id="cacheManager" class="org.apache.shiro.cache.ehcache.EhCacheManager">
+        <property name="cacheManagerConfigFile" value="classpath:ehcache.xml"/>
+    </bean>
+
+    <!-- realm -->
+    <bean id="realm" class="com.chan.shiro.realm.ShiroRealm"></bean>
+
+    <!-- lifecycleBeanPostProcessor:配置shiro bean在Spring IOC容器中的生命周期 -->
+    <bean id="lifecycleBeanPostProcessor" class="org.apache.shiro.spring.LifecycleBeanPostProcessor" />
+
+    <!-- 允许spring beans使用shiro注解，依赖lifecycleBeanPostProcessor-->
+    <bean class="org.springframework.aop.framework.autoproxy.DefaultAdvisorAutoProxyCreator" depends-on="lifecycleBeanPostProcessor" />
+    <bean class="org.apache.shiro.spring.security.interceptor.AuthorizationAttributeSourceAdvisor">
+        <property name="securityManager" ref="securityManager"/>
+    </bean>
+
+    <!-- 配置shiroFilter -->
+    <bean id="shiroFilter" class="org.apache.shiro.spring.web.ShiroFilterFactoryBean">
+        <property name="securityManager" ref="securityManager"/>
+        <property name="loginUrl" value="/login.jsp"/>
+        <property name="successUrl" value="/list.jsp"/>
+        <property name="unauthorizedUrl" value="/unauthorized.jsp"/>
+        <!-- 配置匿名和非匿名访问的路径 -->
+        <property name="filterChainDefinitions">
+            <value>
+                /login.jsp = anon
+                /** = authc
+            </value>
+        </property>
+    </bean>
+</beans>
+```
+
+ehcache.xml
+
+``` xml
+<?xml version="1.0" encoding="UTF-8"?>
+
+<ehcache name="es">
+    <diskStore path="java.io.tmpdir"/>
+    <cache name="shiro-activeSessionCache"
+           maxEntriesLocalHeap="10000"
+           overflowToDisk="false"
+           eternal="false"
+           diskPersistent="false"
+           timeToLiveSeconds="0"
+           timeToIdleSeconds="0"
+           statistics="true"/>
+</ehcache>
+```
+
+
+
+# 实践
+
+## 权限模型
+
+用户1-n角色1-n资源权限
+
+用户信息：
+
+- 用户ID
+- 用户名
+- 密码
+
+角色信息：
+
+- 角色ID
+- 角色名
+
+资源信息：
+
+- 资源ID
+- 资源名称
+- 资源类型
+- 权限
+
+用户-角色关系
+角色-资源关系
+
 
 
